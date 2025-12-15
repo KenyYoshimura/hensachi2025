@@ -1,0 +1,246 @@
+<!doctype html>
+<html lang="ja">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>2025年 全大学偏差値一覧（検索・ソート）</title>
+  <style>
+    :root { --border: #e5e7eb; --text:#111827; --muted:#6b7280; --bg:#ffffff; --bg2:#f9fafb; }
+    html, body { height: 100%; margin: 0; background: var(--bg); color: var(--text); font-family: system-ui, -apple-system, "Segoe UI", Roboto, "Noto Sans JP", "Hiragino Kaku Gothic ProN", "Yu Gothic", sans-serif; }
+    .wrap { height: 100%; display: flex; flex-direction: column; }
+    header { padding: 12px 14px; border-bottom: 1px solid var(--border); background: var(--bg); }
+    .title { font-size: 14px; font-weight: 700; margin: 0 0 8px 0; }
+    .controls { display: flex; flex-wrap: wrap; gap: 10px; align-items: center; }
+    .controls > * { font-size: 13px; }
+    input[type="search"]{
+      flex: 1 1 260px;
+      padding: 8px 10px;
+      border: 1px solid var(--border);
+      border-radius: 10px;
+      outline: none;
+      min-width: 220px;
+    }
+    select{
+      padding: 8px 10px;
+      border: 1px solid var(--border);
+      border-radius: 10px;
+      background: var(--bg);
+    }
+    .meta { color: var(--muted); font-size: 12px; margin-left: auto; white-space: nowrap; }
+    main { flex: 1 1 auto; overflow: hidden; }
+    .tableWrap { height: 100%; overflow: auto; }
+    table { width: 100%; border-collapse: collapse; }
+    thead th{
+      position: sticky; top: 0;
+      background: var(--bg2);
+      border-bottom: 1px solid var(--border);
+      padding: 10px 10px;
+      text-align: left;
+      font-size: 12px;
+      cursor: pointer;
+      user-select: none;
+      white-space: nowrap;
+    }
+    tbody td{
+      border-bottom: 1px solid var(--border);
+      padding: 9px 10px;
+      font-size: 12px;
+      vertical-align: top;
+      white-space: nowrap;
+    }
+    tbody tr:hover { background: #f3f4f6; }
+    .pager { padding: 10px 14px; border-top: 1px solid var(--border); display: flex; gap: 8px; align-items: center; flex-wrap: wrap; }
+    .btn{
+      padding: 7px 10px;
+      border: 1px solid var(--border);
+      border-radius: 10px;
+      background: var(--bg);
+      cursor: pointer;
+      font-size: 12px;
+    }
+    .btn[disabled]{ opacity: .5; cursor: not-allowed; }
+    .pageInfo{ color: var(--muted); font-size: 12px; }
+    .error { padding: 14px; color: #b91c1c; }
+    .hint { color: var(--muted); font-size: 12px; margin-top: 6px; line-height: 1.5; }
+    @media (max-width: 520px){
+      .meta { width: 100%; margin-left: 0; }
+      thead th, tbody td { padding: 8px 8px; }
+    }
+  </style>
+</head>
+<body>
+<div class="wrap">
+  <header>
+    <div class="title">2025年 全大学偏差値一覧</div>
+    <div class="controls">
+      <input id="q" type="search" placeholder="検索（大学名・所在地・学部・学科など）" />
+      <label>表示件数
+        <select id="pageSize">
+          <option value="20">20</option>
+          <option value="50" selected>50</option>
+          <option value="100">100</option>
+          <option value="200">200</option>
+        </select>
+      </label>
+      <div class="meta" id="meta">読み込み中…</div>
+    </div>
+    <div class="hint">
+      列見出しをクリックするとソートできます（昇順→降順）。<br/>
+      ※このHTMLは fetch でJSONを読み込みます。DATA_URLをあなたの公開JSON URLに差し替えて使ってください。
+    </div>
+  </header>
+
+  <main>
+    <div class="tableWrap">
+      <table>
+        <thead><tr id="thead"></tr></thead>
+        <tbody id="tbody"></tbody>
+      </table>
+      <div id="err" class="error" style="display:none;"></div>
+    </div>
+  </main>
+
+  <div class="pager">
+    <button class="btn" id="prev">前へ</button>
+    <button class="btn" id="next">次へ</button>
+    <span class="pageInfo" id="pageInfo"></span>
+  </div>
+</div>
+
+<script>
+  // ===== 設定：公開JSONのURLを指定 =====
+  // 同じフォルダに hensachi_2025.json を置いている場合はこのままでOK（相対パス）
+  const DATA_URL = "hensachi_2025.json";
+
+  const state = {
+    raw: [],
+    filtered: [],
+    cols: [],
+    q: "",
+    page: 1,
+    pageSize: 50,
+    sortKey: null,
+    sortDir: 1, // 1 asc, -1 desc
+  };
+
+  const $ = (id) => document.getElementById(id);
+
+  function isNumberLike(v){
+    if (v === null || v === undefined) return false;
+    if (typeof v === "number") return true;
+    if (typeof v !== "string") return false;
+    const s = v.trim();
+    if (s === "") return false;
+    return !Number.isNaN(Number(s));
+  }
+
+  function cmp(a, b, key){
+    const va = a[key], vb = b[key];
+    const aNum = isNumberLike(va), bNum = isNumberLike(vb);
+    if (aNum && bNum){
+      return (Number(va) - Number(vb)) * state.sortDir;
+    }
+    return String(va ?? "").localeCompare(String(vb ?? ""), "ja") * state.sortDir;
+  }
+
+  function applyFilter(){
+    const q = state.q.trim().toLowerCase();
+    if (!q){
+      state.filtered = [...state.raw];
+    } else {
+      state.filtered = state.raw.filter(row => {
+        return state.cols.some(c => String(row[c] ?? "").toLowerCase().includes(q));
+      });
+    }
+    if (state.sortKey){
+      state.filtered.sort((a,b) => cmp(a,b,state.sortKey));
+    }
+    state.page = 1;
+    render();
+  }
+
+  function renderHead(){
+    const tr = $("thead");
+    tr.innerHTML = "";
+    state.cols.forEach(col => {
+      const th = document.createElement("th");
+      th.textContent = col;
+      th.title = "クリックでソート";
+      th.addEventListener("click", () => {
+        if (state.sortKey === col){
+          state.sortDir = state.sortDir * -1;
+        } else {
+          state.sortKey = col;
+          state.sortDir = 1;
+        }
+        applyFilter();
+      });
+      tr.appendChild(th);
+    });
+  }
+
+  function render(){
+    const total = state.filtered.length;
+    const pages = Math.max(1, Math.ceil(total / state.pageSize));
+    state.page = Math.min(state.page, pages);
+
+    const start = (state.page - 1) * state.pageSize;
+    const end = Math.min(total, start + state.pageSize);
+    const slice = state.filtered.slice(start, end);
+
+    const tbody = $("tbody");
+    tbody.innerHTML = "";
+    for (const row of slice){
+      const tr = document.createElement("tr");
+      for (const c of state.cols){
+        const td = document.createElement("td");
+        const v = row[c];
+        td.textContent = (v === null || v === undefined) ? "" : String(v);
+        tr.appendChild(td);
+      }
+      tbody.appendChild(tr);
+    }
+
+    $("meta").textContent = `表示: ${start + (total ? 1 : 0)}–${end} / ${total}件`;
+    $("pageInfo").textContent = `ページ ${state.page} / ${pages}`;
+    $("prev").disabled = (state.page <= 1);
+    $("next").disabled = (state.page >= pages);
+  }
+
+  async function init(){
+    try{
+      const res = await fetch(DATA_URL, { cache: "no-store" });
+      if (!res.ok) throw new Error(`JSONの取得に失敗しました（HTTP ${res.status}）: ${DATA_URL}`);
+      const data = await res.json();
+      if (!Array.isArray(data)) throw new Error("JSONの形式が想定と異なります（配列ではありません）。");
+      state.raw = data;
+      state.cols = Object.keys(data[0] ?? {});
+      renderHead();
+      applyFilter();
+    } catch (e){
+      const msg = String(e && e.message ? e.message : e);
+      $("err").style.display = "block";
+      $("err").textContent = msg + "\n\n対処: 1) DATA_URL を公開JSONのURLに変更 2) CORS/同一ドメイン 3) JSONが公開されているか確認";
+      $("meta").textContent = "読み込み失敗";
+      console.error(e);
+    }
+  }
+
+  $("q").addEventListener("input", (ev) => {
+    state.q = ev.target.value;
+    applyFilter();
+  });
+
+  $("pageSize").addEventListener("change", (ev) => {
+    state.pageSize = Number(ev.target.value) || 50;
+    state.page = 1;
+    render();
+  });
+
+  $("prev").addEventListener("click", () => { state.page--; render(); });
+  $("next").addEventListener("click", () => { state.page++; render(); });
+
+  init();
+</script>
+</body>
+</html>

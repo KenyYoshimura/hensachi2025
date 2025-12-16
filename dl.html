@@ -1,0 +1,60 @@
+<!doctype html>
+<html lang="ja">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width,initial-scale=1" />
+  <title>Download</title>
+</head>
+<body>
+  <p id="msg">Preparing…</p>
+  <p id="fallback" style="display:none;">
+    自動ダウンロードがブロックされた場合は <a id="manual" href="#">こちら</a> をクリックしてください。
+  </p>
+
+  <script>
+    (async () => {
+      const qs = new URLSearchParams(location.search);
+      const f = qs.get("f");                // 例: 2025年全大学偏差値一覧.xlsx
+      const name = qs.get("name") || f;     // 保存名
+
+      const msg = document.getElementById("msg");
+      const fallback = document.getElementById("fallback");
+      const manual = document.getElementById("manual");
+
+      if (!f) {
+        msg.textContent = "URLに ?f=ファイル名 を付けてください（例：?f=2025年全大学偏差値一覧.xlsx）";
+        return;
+      }
+
+      try {
+        msg.textContent = "Downloading…";
+
+        // 日本語ファイル名対策：URLエンコードして取得
+        const res = await fetch("./" + encodeURIComponent(f), { cache: "no-store" });
+        if (!res.ok) throw new Error("Fetch failed: " + res.status);
+
+        const blob = await res.blob();
+        const url = URL.createObjectURL(blob);
+
+        // 手動リンク（保険）
+        manual.href = url;
+        manual.download = name || "download";
+        fallback.style.display = "block";
+
+        // 自動ダウンロード
+        const a = document.createElement("a");
+        a.href = url;
+        a.download = name || "download";
+        document.body.appendChild(a);
+        a.click();
+        a.remove();
+
+        msg.textContent = "ダウンロードを開始しました。";
+        setTimeout(() => URL.revokeObjectURL(url), 5000);
+      } catch (e) {
+        msg.textContent = "ダウンロードに失敗しました： " + e.message;
+      }
+    })();
+  </script>
+</body>
+</html>

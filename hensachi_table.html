@@ -61,6 +61,7 @@
     .btn[disabled]{ opacity: .5; cursor: not-allowed; }
     .pageInfo{ color: var(--muted); font-size: 12px; }
     .error { padding: 14px; color: #b91c1c; }
+    .hint a { color: #4338ca; }
     .hint { color: var(--muted); font-size: 12px; margin-top: 6px; line-height: 1.5; }
     @media (max-width: 520px){
       .meta { width: 100%; margin-left: 0; }
@@ -73,9 +74,9 @@
   <header>
     <div class="title">2025年 全大学偏差値一覧</div>
     <div class="controls">
-      <input id="q" type="search" placeholder="検索（大学名・所在地・学部・学科など）" />
+      <input id="q" type="search" disabled placeholder="検索（大学名・所在地・学部・学科など）" />
       <label>表示件数
-        <select id="pageSize">
+        <select id="pageSize" disabled>
           <option value="20">20</option>
           <option value="50" selected>50</option>
           <option value="100">100</option>
@@ -85,8 +86,9 @@
       <div class="meta" id="meta">読み込み中…</div>
     </div>
     <div class="hint">
-      列見出しをクリックするとソートできます（昇順→降順）。<br/>
-      ※このHTMLは fetch でJSONを読み込みます。DATA_URLをあなたの公開JSON URLに差し替えて使ってください。
+      大学名・所在地・学部・学科などで検索できます。列の見出しを選ぶと、並び順が切り替わります。<br/>
+      表示件数を選び、一覧の下にある「前へ」「次へ」でページを切り替えられます。<br/>
+      <a href="https://wonderful-growth.com/dl/hensachi2025" target="_blank" rel="noopener noreferrer">CSVデータの取得はこちら（別のタブで開きます）</a>
     </div>
   </header>
 
@@ -96,13 +98,17 @@
         <thead><tr id="thead"></tr></thead>
         <tbody id="tbody"></tbody>
       </table>
-      <div id="err" class="error" style="display:none;"></div>
+      <div id="err" class="error" role="alert" style="display:none;">
+        <p>一覧を読み込めませんでした。通信環境を確かめてから、もう一度お試しください。</p>
+        <button class="btn" id="retry" type="button">もう一度読み込む</button>
+        <p>表示できない場合は、上部のリンクからCSVデータを取得できます。</p>
+      </div>
     </div>
   </main>
 
   <div class="pager">
-    <button class="btn" id="prev">前へ</button>
-    <button class="btn" id="next">次へ</button>
+    <button class="btn" id="prev" disabled>前へ</button>
+    <button class="btn" id="next" disabled>次へ</button>
     <span class="pageInfo" id="pageInfo"></span>
   </div>
 </div>
@@ -217,10 +223,10 @@
       state.cols = Object.keys(data[0] ?? {});
       renderHead();
       applyFilter();
+      $("q").disabled = false;
+      $("pageSize").disabled = false;
     } catch (e){
-      const msg = String(e && e.message ? e.message : e);
       $("err").style.display = "block";
-      $("err").textContent = msg + "\n\n対処: 1) DATA_URL を公開JSONのURLに変更 2) CORS/同一ドメイン 3) JSONが公開されているか確認";
       $("meta").textContent = "読み込み失敗";
       console.error(e);
     }
@@ -239,6 +245,8 @@
 
   $("prev").addEventListener("click", () => { state.page--; render(); });
   $("next").addEventListener("click", () => { state.page++; render(); });
+
+  $("retry").addEventListener("click", () => location.reload());
 
   init();
 </script>
